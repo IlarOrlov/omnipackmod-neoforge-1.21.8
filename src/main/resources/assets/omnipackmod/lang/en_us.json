@@ -1,0 +1,13 @@
+{
+  "itemGroup.omnipackmod": "Example Mod Tab",
+  "block.omnipackmod.example_block": "Example Block",
+  "item.omnipackmod.example_item": "Example Item",
+
+  "omnipackmod.configuration.title": "Omni Pack Configs",
+  "omnipackmod.configuration.section.omnipackmod.common.toml": "Omni Pack Configs",
+  "omnipackmod.configuration.section.omnipackmod.common.toml.title": "Omni Pack Configs",
+  "omnipackmod.configuration.items": "Item List",
+  "omnipackmod.configuration.logDirtBlock": "Log Dirt Block",
+  "omnipackmod.configuration.magicNumberIntroduction": "Magic Number Text",
+  "omnipackmod.configuration.magicNumber": "Magic Number"
+}
