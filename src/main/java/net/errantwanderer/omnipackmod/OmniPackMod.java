@@ -14,25 +14,31 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 
-import net.neoforged.neoforge.event.tick.ServerTickEvent; // contains nested Pre/Post
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedOutEvent;
 
 import net.minecraft.server.level.ServerPlayer;
 
-// The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(OmniPackMod.MOD_ID)
 public class OmniPackMod {
     public static final String MOD_ID = "omnipackmod";
     public static final Logger LOGGER = LogUtils.getLogger();
 
-    private final SharedInventoryManager sharedInventoryManager = new SharedInventoryManager();
+    private static SharedInventoryManager sharedInventoryManager;
 
     public OmniPackMod(IEventBus modEventBus, ModContainer modContainer) {
         modEventBus.addListener(this::commonSetup);
         NeoForge.EVENT_BUS.register(this); // registers @SubscribeEvent instance methods
         modEventBus.addListener(this::addCreative);
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+
+        // instantiate manager here
+        sharedInventoryManager = new SharedInventoryManager();
+    }
+
+    public static SharedInventoryManager getSharedInventoryManager() {
+        return sharedInventoryManager;
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
@@ -41,7 +47,6 @@ public class OmniPackMod {
     private void addCreative(BuildCreativeModeTabContentsEvent event) {
     }
 
-    // This ServerStartingEvent extends ServerLifecycleEvent and DOES provide getServer()
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
         MinecraftServer server = event.getServer(); // valid on NeoForge
@@ -49,8 +54,6 @@ public class OmniPackMod {
         LOGGER.info("OmniPackMod: shared inventory manager initialized");
     }
 
-    // Use the ServerTickEvent.Post nested class to run AFTER server tick.
-    // ServerTickEvent.Post has getServer() and is fired only on the logical server.
     @SubscribeEvent
     public void onServerTick(ServerTickEvent.Post event) {
         MinecraftServer server = event.getServer();
@@ -59,7 +62,6 @@ public class OmniPackMod {
         }
     }
 
-    // Player login / logout: use the PlayerEvent nested classes
     @SubscribeEvent
     public void onPlayerLoggedIn(PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {

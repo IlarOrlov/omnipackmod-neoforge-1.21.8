@@ -8,8 +8,16 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.network.protocol.game.ClientboundSetPlayerInventoryPacket;
 
+/**
+ * Server-authoritative shared inventory.
+ *
+ * - Detects per-player diffs and enqueues SlotChangeRequest
+ * - Applies queued requests sequentially (synchronized)
+ * - Broadcasts authoritative inventory to all players using vanilla inventory packets
+ *
+ * NOTE: This class intentionally reuses vanilla inventory slots (main + armor + offhand).
+ */
 public class SharedInventoryManager {
     // main (36) + armor (4) + offhand (1) = 41
     public static final int SHARED_SLOT_COUNT = 41;
@@ -23,7 +31,7 @@ public class SharedInventoryManager {
     public SharedInventoryManager() { }
 
     public void initOnServerStart(MinecraftServer server) {
-        // TODO: load persisted inventory if/when you want to persist across restarts
+        // TODO: persistent load/store if you want inventory to survive restarts
     }
 
     public void onPlayerJoin(ServerPlayer player) {
@@ -41,9 +49,9 @@ public class SharedInventoryManager {
         lastSnapshotPerPlayer.remove(player.getUUID());
     }
 
-    // Call from ServerTickEvent.Post (server tick)
+    // Call from ServerTickEvent.Post
     public void onServerTick(MinecraftServer server) {
-        // 1) detect diffs
+        // 1) detect diffs from players' inventories and enqueue requests
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
             detectAndEnqueuePlayerDiff(p);
         }
@@ -53,6 +61,24 @@ public class SharedInventoryManager {
 
         // 3) if changed, broadcast authoritative inventory to all
         if (lastProcessedTs != 0L) {
+            broadcastSharedInventoryToAll(server);
+            lastProcessedTs = 0L;
+        }
+    }
+
+    /**
+     * Called right after we've invoked the player's containerMenu.clicked(...) server-side.
+     * This forces immediate diff detection for that player and processes the queue so the
+     * result is broadcast to all without waiting for the next tick loop.
+     */
+    public void handleImmediatePlayerAction(ServerPlayer player, MinecraftServer server) {
+        // detect diff for just this player and enqueue resulting requests
+        detectAndEnqueuePlayerDiff(player);
+
+        // apply and broadcast immediately (safely)
+        processQueuedRequests();
+
+        if (lastProcessedTs != 0L && server != null) {
             broadcastSharedInventoryToAll(server);
             lastProcessedTs = 0L;
         }
@@ -76,7 +102,7 @@ public class SharedInventoryManager {
             ItemStack oldStack = prev[slot];
             ItemStack newStack = currentSnapshot[slot];
 
-            // Use ItemStack.matches (checks item, count and components in modern mappings)
+            // ItemStack.matches checks item, count and nbt in modern mappings
             if (!ItemStack.matches(oldStack, newStack)) {
                 // enqueue the player's desired state for that slot
                 requestQueue.add(new SlotChangeRequest(id, slot, newStack.copy(), System.currentTimeMillis()));
@@ -132,15 +158,13 @@ public class SharedInventoryManager {
     private void applySharedToPlayerInventory(ServerPlayer p) {
         Inventory inv = p.getInventory(); // net.minecraft.world.entity.player.Inventory
 
-        // Inventory implements Container-like API: use setItem/getItem
         int size = Math.min(SHARED_SLOT_COUNT, inv.getContainerSize());
         for (int slot = 0; slot < size; slot++) {
             ItemStack s = sharedInventory.get(slot);
             inv.setItem(slot, s.copy());
         }
 
-        // mark changed on the inventory so server knows it's been updated
-        inv.setChanged(); // Inventory has setChanged() in modern mappings
+        inv.setChanged();
     }
 
     private void sendFullInventoryToPlayer(ServerPlayer p) {
@@ -149,11 +173,9 @@ public class SharedInventoryManager {
 
         for (int slot = 0; slot < size; slot++) {
             ItemStack stack = inv.getItem(slot);
-            ClientboundSetPlayerInventoryPacket pkt = new ClientboundSetPlayerInventoryPacket(slot, stack);
+            net.minecraft.network.protocol.game.ClientboundSetPlayerInventoryPacket pkt = new net.minecraft.network.protocol.game.ClientboundSetPlayerInventoryPacket(slot, stack);
             p.connection.send(pkt);
         }
-        // Note: if you ever see visual glitches when a player has an open container,
-        // prefer sending the player's current open container's update packet instead.
     }
 
     /* -------------------------
